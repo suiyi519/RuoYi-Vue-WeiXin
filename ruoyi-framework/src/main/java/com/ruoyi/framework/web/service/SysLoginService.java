@@ -1,6 +1,9 @@
 package com.ruoyi.framework.web.service;
 
 import javax.annotation.Resource;
+
+import com.alibaba.fastjson2.JSONObject;
+import com.ruoyi.system.mapper.SysUserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -29,6 +32,8 @@ import com.ruoyi.framework.security.context.AuthenticationContextHolder;
 import com.ruoyi.system.service.ISysConfigService;
 import com.ruoyi.system.service.ISysUserService;
 
+import java.util.Random;
+
 /**
  * 登录校验方法
  * 
@@ -51,6 +56,9 @@ public class SysLoginService
 
     @Autowired
     private ISysConfigService configService;
+
+    @Autowired
+    private SysUserMapper userMapper;
 
     /**
      * 登录验证
@@ -177,5 +185,81 @@ public class SysLoginService
         sysUser.setLoginIp(IpUtils.getIpAddr());
         sysUser.setLoginDate(DateUtils.getNowDate());
         userService.updateUserProfile(sysUser);
+    }
+
+    /**
+     * 微信登录
+     *
+     * @param decryptResult 登录凭证 只能用一次
+     * @return
+     */
+    public String wxLogin(String decryptResult){
+        //字符串转json
+        JSONObject jsonObject = JSONObject.parseObject(decryptResult);
+        //        String unionid = jsonObject.getString("unionid");
+        String openId = jsonObject.getString("openId");
+        System.out.println("openId"+openId);
+        //获取nickName
+        String nickName = getStringRandom(16);// 生成16位随机昵称
+        //获取头像
+        //        String avatarUrl = jsonObject.getString("avatarUrl");
+        String avatarUrl = "";
+        //还可以获取其他信息
+        //根据openid判断数据库中是否有该用户
+        //根据openid查询用户信息
+        SysUser wxUser = userMapper.selectWxUserByOpenId(openId);
+
+        //如果查不到，则新增，查到了，则更新
+        SysUser user = new SysUser();
+        if (wxUser == null) {
+            // 新增
+            user.setUserName(getStringRandom(16));// 生成16位随机用户名
+            user.setNickName(nickName);
+            user.setAvatar(avatarUrl);
+            //            wxUser.setUnionId(unionid);
+            user.setOpenId(openId);
+            user.setCreateTime(DateUtils.getNowDate());
+            //新增 用户
+            userMapper.insertUser(user);
+        }else {
+            //更新
+            user = wxUser;
+            user.setNickName(nickName);
+            user.setAvatar(avatarUrl);
+            user.setUpdateTime(DateUtils.getNowDate());
+            userMapper.updateUser(user);
+        }
+
+        //组装token信息
+        LoginUser loginUser = new LoginUser();
+        // loginUser.setOpenId(openId);
+        //如果有的话设置
+        loginUser.setUser(user);
+        loginUser.setUserId(user.getUserId());
+
+        // 生成token
+        return tokenService.createToken(loginUser);
+    }
+
+    //生成随机用户名，数字和字母组成,
+    public static String getStringRandom(int length) {
+
+        String val = "";
+        Random random = new Random();
+
+        //参数length，表示生成几位随机数
+        for (int i = 0; i < length; i++) {
+
+            String charOrNum = random.nextInt(2) % 2 == 0 ? "char" : "num";
+            //输出字母还是数字
+            if ("char".equalsIgnoreCase(charOrNum)) {
+                //输出是大写字母还是小写字母
+                int temp = random.nextInt(2) % 2 == 0 ? 65 : 97;
+                val += (char) (random.nextInt(26) + temp);
+            } else if ("num".equalsIgnoreCase(charOrNum)) {
+                val += String.valueOf(random.nextInt(10));
+            }
+        }
+        return val;
     }
 }
